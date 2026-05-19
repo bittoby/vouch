@@ -61,7 +61,7 @@ def build_context_pack(
             cites = _citations_for_claim(store, hid)
         items.append(
             ContextItem(
-                id=hid, type=kind, summary=summary, score=score,
+                id=hid, type=kind, summary=summary, score=score,  # type: ignore[arg-type]
                 backend=backend, citations=cites,
                 freshness="unknown",
             )
