@@ -13,7 +13,7 @@ from pathlib import Path
 
 from . import audit
 from .models import Source
-from .storage import KBStore, sha256_hex
+from .storage import KBStore, ArtifactNotFoundError, sha256_hex
 
 
 @dataclass
@@ -27,7 +27,7 @@ class VerificationResult:
 def verify_source(store: KBStore, source: Source) -> VerificationResult:
     try:
         body = store.read_source_content(source.id)
-    except FileNotFoundError:
+    except ArtifactNotFoundError:
         return VerificationResult(source=source, stored_ok=False,
                                   external_status="n/a", note="stored content missing")
     stored_ok = sha256_hex(body) == source.id
