@@ -28,7 +28,8 @@ from typing import Any
 import yaml
 
 from . import audit
-from .storage import sha256_hex
+from .models import Claim, Entity, Evidence, Proposal, Relation, Session, Source
+from .storage import _deserialize_page, sha256_hex
 
 MANIFEST_NAME = "manifest.json"
 SPEC_VERSION = "vouch-bundle-0.1"
@@ -37,6 +38,17 @@ EXPORT_SUBDIRS = (
     "claims", "pages", "sources", "entities", "relations",
     "evidence", "sessions", "decided",
 )
+
+VALIDATORS: dict[str, Any] = {
+    "claims": lambda data: Claim.model_validate(yaml.safe_load(data)),
+    "pages": lambda data: _deserialize_page(data.decode()),
+    "sources": lambda data: Source.model_validate(yaml.safe_load(data)),
+    "entities": lambda data: Entity.model_validate(yaml.safe_load(data)),
+    "relations": lambda data: Relation.model_validate(yaml.safe_load(data)),
+    "evidence": lambda data: Evidence.model_validate(yaml.safe_load(data)),
+    "sessions": lambda data: Session.model_validate(yaml.safe_load(data)),
+    "decided": lambda data: Proposal.model_validate(yaml.safe_load(data)),
+}
 
 
 # --- export ---------------------------------------------------------------
@@ -196,6 +208,17 @@ class ImportCheckResult:
     issues: list[str]
 
 
+def _validate_content(path: str, data: bytes, issues: list[str]) -> None:
+    subdir = path.split("/")[0]
+    validator = VALIDATORS.get(subdir)
+    if validator is None:
+        return
+    try:
+        validator(data)
+    except Exception as e:
+        issues.append(f"schema validation failed: {path}: {e}")
+
+
 def import_check(kb_dir: Path, bundle_path: Path) -> ImportCheckResult:
     """Diff a bundle against the destination KB without writing anything."""
     new_files: list[str] = []
@@ -213,6 +236,7 @@ def import_check(kb_dir: Path, bundle_path: Path) -> ImportCheckResult:
             )
         manifest = json.loads(tar.extractfile(mf_member).read().decode())  # type: ignore[union-attr]
         bundle_id = manifest.get("bundle_id", "")
+        manifest_paths = {f["path"] for f in manifest["files"]}
         for f in manifest["files"]:
             try:
                 dest = _safe_member_path(kb_dir, f["path"])
@@ -221,11 +245,17 @@ def import_check(kb_dir: Path, bundle_path: Path) -> ImportCheckResult:
                 continue
             if not dest.exists():
                 new_files.append(f["path"])
-                continue
-            if sha256_hex(dest.read_bytes()) == f["sha256"]:
+            elif sha256_hex(dest.read_bytes()) == f["sha256"]:
                 identical.append(f["path"])
             else:
                 conflicts.append(f["path"])
+        for member in tar.getmembers():
+            if member.name == MANIFEST_NAME or not member.isfile():
+                continue
+            if member.name not in manifest_paths:
+                continue
+            body = tar.extractfile(member).read()  # type: ignore[union-attr]
+            _validate_content(member.name, body, issues)
 
     return ImportCheckResult(
         ok=not issues, bundle_id=bundle_id,
@@ -275,7 +305,13 @@ def import_apply(
                 skipped.append(member.name)
                 continue
             dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.write_bytes(tar.extractfile(member).read())  # type: ignore[union-attr]
+            body = tar.extractfile(member).read()  # type: ignore[union-attr]
+            val_issues: list[str] = []
+            _validate_content(member.name, body, val_issues)
+            if val_issues:
+                skipped.append(member.name)
+                continue
+            dest.write_bytes(body)
             written.append(member.name)
     result = {
         "bundle_id": check.bundle_id,
