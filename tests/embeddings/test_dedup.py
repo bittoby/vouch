@@ -7,7 +7,6 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from vouch import index_db
 from vouch.embeddings import register
 from vouch.embeddings.base import DEFAULT_MODEL_NAME, Embedder
 from vouch.embeddings.dedup import list_duplicates

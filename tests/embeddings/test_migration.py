@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.embeddings._fakes import MockEmbedder
 from vouch import index_db
 from vouch.embeddings import register
 from vouch.embeddings.migration import (
@@ -14,7 +15,6 @@ from vouch.embeddings.migration import (
 )
 from vouch.models import Claim
 from vouch.storage import KBStore
-from tests.embeddings._fakes import MockEmbedder
 
 
 @pytest.fixture(autouse=True)

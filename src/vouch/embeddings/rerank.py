@@ -43,7 +43,7 @@ def rerank(
     scores = reranker.score(query, candidates)
     reranked = [
         (kind, id_, snip, score)
-        for (kind, id_, snip, _orig), score in zip(hits, scores)
+        for (kind, id_, snip, _orig), score in zip(hits, scores, strict=False)
     ]
     reranked.sort(key=lambda h: h[3], reverse=True)
     return reranked[:top_k]
