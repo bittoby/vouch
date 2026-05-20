@@ -347,7 +347,10 @@ class KBStore:
             raise ValueError(
                 f"entity {entity.id} already exists -- choose a different slug"
             ) from e
-        self._embed_and_store(kind="entity", id=entity.id, text=f"{entity.name}\n\n{entity.description or ''}")
+        self._embed_and_store(
+            kind="entity", id=entity.id,
+            text=f"{entity.name}\n\n{entity.description or ''}",
+        )
         return entity
 
     def get_entity(self, eid: str) -> Entity:
@@ -373,7 +376,10 @@ class KBStore:
             raise ValueError(
                 f"relation {rel.id} already exists -- choose a different slug"
             ) from e
-        self._embed_and_store(kind="relation", id=rel.id, text=f"{rel.source} {rel.relation.value} {rel.target}")
+        self._embed_and_store(
+            kind="relation", id=rel.id,
+            text=f"{rel.source} {rel.relation.value} {rel.target}",
+        )
         return rel
 
     def get_relation(self, rid: str) -> Relation:

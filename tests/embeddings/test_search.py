@@ -6,11 +6,19 @@ from pathlib import Path
 
 import pytest
 
+from tests.embeddings._fakes import MockEmbedder
 from vouch import index_db
 from vouch.embeddings import register
-from vouch.models import Claim, Entity, EntityType, Page
+from vouch.models import (
+    Claim,
+    Entity,
+    EntityType,
+    Evidence,
+    Page,
+    Relation,
+    RelationType,
+)
 from vouch.storage import KBStore
-from tests.embeddings._fakes import MockEmbedder
 
 
 @pytest.fixture(autouse=True)
@@ -29,12 +37,9 @@ def test_put_claim_writes_embedding(store: KBStore) -> None:
     store.put_claim(Claim(id="c1", text="claim text", evidence=[src.id]))
     rec = index_db.get_embedding(store.kb_dir, kind="claim", id="c1")
     assert rec is not None
-    vec, ch, model = rec
+    vec, _ch, model = rec
     assert vec.shape == (8,)
     assert model == "mock"
-
-
-from vouch.models import Evidence, Relation, RelationType  # noqa: E402
 
 
 def test_put_page_writes_embedding(store: KBStore) -> None:
