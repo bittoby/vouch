@@ -62,6 +62,7 @@ def capabilities() -> Capabilities:
         from .embeddings import embeddings_available
         if embeddings_available():
             retrieval.append("embedding")
+            retrieval.append("hybrid")
     except Exception:
         pass
     return Capabilities(

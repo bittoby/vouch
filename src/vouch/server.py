@@ -174,27 +174,23 @@ def _search_hybrid(store: KBStore, query: str, limit: int
         emb_hits = index_db.search_embeddings(store.kb_dir, vec, limit=limit)
     else:
         emb_hits = []
-    seen: set[tuple[str, str]] = set()
+    seen: dict[tuple[str, str], float] = {}
     fused: list[dict[str, Any]] = []
     for hits, weight in [(fts_hits, 1.0), (emb_hits, 1.0)]:
         for rank, (kind, hid, snip, sc) in enumerate(hits):
             key = (kind, hid)
-            seen.add(key)
-            fused.append({
-                "kind": kind, "id": hid, "snippet": snip,
-                "score": sc + weight * (1.0 / (rank + 1)),
-                "backend": "hybrid",
-            })
-    for hits in [fts_hits, emb_hits]:
-        for kind, hid, snip, sc in hits:
-            key = (kind, hid)
-            if key not in seen:
-                seen.add(key)
+            rank_score = weight * (1.0 / (rank + 1))
+            if key in seen:
+                seen[key] += sc + rank_score
+            else:
+                seen[key] = sc + rank_score
                 fused.append({
                     "kind": kind, "id": hid, "snippet": snip,
-                    "score": sc,
+                    "score": seen[key],
                     "backend": "hybrid",
                 })
+    for item in fused:
+        item["score"] = seen[(item["kind"], item["id"])]
     fused.sort(key=lambda x: x["score"], reverse=True)
     return fused[:limit]
 

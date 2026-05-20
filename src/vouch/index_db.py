@@ -130,15 +130,22 @@ def search_embeddings(kb_dir: Path, query_vec: list[float], *,
                       ) -> list[tuple[str, str, str, float]]:
     """Return (kind, id, snippet, cosine_score) via brute-force NumPy scan."""
     import numpy as np  # type: ignore[import-not-found]
-    q = np.array(query_vec, dtype=np.float32)
-    q = q / np.linalg.norm(q)
     out: list[tuple[str, str, str, float]] = []
+    if not query_vec:
+        return out
+    q = np.array(query_vec, dtype=np.float32)
+    q_norm = np.linalg.norm(q)
+    if q_norm == 0.0:
+        return out
+    q = q / q_norm
     with open_db(kb_dir) as conn:
         rows = conn.execute(
             "SELECT kind, id, vec FROM embeddings"
         ).fetchall()
     for kind, eid, vec_json in rows:
         v = np.array(json.loads(vec_json), dtype=np.float32)
+        if v.ndim != 1 or v.shape[0] != q.shape[0]:
+            continue
         score = float(np.dot(q, v))
         snippet = _snippet_for(kb_dir, kind, eid)
         out.append((kind, eid, snippet, score))
