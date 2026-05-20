@@ -209,8 +209,6 @@ class ImportCheckResult:
 
 
 def _validate_content(path: str, data: bytes, issues: list[str]) -> None:
-    if not any(path.endswith(ext) for ext in (".yaml", ".yml", ".md")):
-        return
     subdir = path.split("/")[0]
     # Source artifacts have two file kinds:
     #   sources/<sha>/meta.yaml  -- the Source pydantic model (validate)
@@ -221,6 +219,20 @@ def _validate_content(path: str, data: bytes, issues: list[str]) -> None:
         return
     validator = VALIDATORS.get(subdir)
     if validator is None:
+        return
+    expected_exts = {
+        "pages": (".md",),
+        "claims": (".yaml", ".yml"),
+        "sources": (".yaml", ".yml"),
+        "entities": (".yaml", ".yml"),
+        "relations": (".yaml", ".yml"),
+        "evidence": (".yaml", ".yml"),
+        "sessions": (".yaml", ".yml"),
+        "decided": (".yaml", ".yml"),
+    }
+    allowed = expected_exts.get(subdir)
+    if allowed is not None and not any(path.endswith(ext) for ext in allowed):
+        issues.append(f"unexpected extension for {subdir}: {path}")
         return
     try:
         validator(data)

@@ -23,8 +23,8 @@ def test_embeddings_available_returns_bool() -> None:
 
 
 def test_encode_returns_expected_shape() -> None:
+    np = pytest.importorskip("numpy")
     pytest.importorskip("sentence_transformers")
-    import numpy as np
     vec = encode(["hello world"])
     assert isinstance(vec, np.ndarray)
     assert vec.shape == (1, 384)
