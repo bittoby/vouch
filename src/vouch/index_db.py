@@ -291,11 +291,15 @@ def search_embedding(
         have_vec = _load_sqlite_vec(conn)
         if have_vec:
             try:
+                # SQLite doesn't allow a column alias to be referenced in the
+                # WHERE clause of the same SELECT, so the min_score filter
+                # goes in an outer query against the inner alias.
                 rows = conn.execute(
-                    f"SELECT kind, id, "
-                    f"  1.0 - vec_distance_cosine(vec, ?) AS score "
-                    f"FROM embedding_index "
-                    f"WHERE kind IN ({placeholders}) AND score >= ? "
+                    f"SELECT kind, id, score FROM ("
+                    f"  SELECT kind, id, 1.0 - vec_distance_cosine(vec, ?) AS score "
+                    f"  FROM embedding_index "
+                    f"  WHERE kind IN ({placeholders})"
+                    f") WHERE score >= ? "
                     f"ORDER BY score DESC LIMIT ?",
                     (q.tobytes(), *kinds, min_score, limit),
                 ).fetchall()
