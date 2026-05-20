@@ -176,6 +176,8 @@ class ImportCheckResult:
 
 
 def _validate_content(path: str, data: bytes, issues: list[str]) -> None:
+    if not any(path.endswith(ext) for ext in (".yaml", ".yml", ".md")):
+        return
     subdir = path.split("/")[0]
     validator = VALIDATORS.get(subdir)
     if validator is None:
