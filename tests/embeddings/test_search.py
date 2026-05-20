@@ -95,6 +95,24 @@ def test_update_claim_recomputes_embedding(store: KBStore) -> None:
     assert rec_after[1] != hash_before
 
 
+def test_jsonl_search_uses_embedding_backend(
+    store: KBStore, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from vouch import jsonl_server
+    monkeypatch.setattr(jsonl_server, "_store", lambda: store)
+    src = store.put_source(b"e")
+    store.put_claim(Claim(id="c1", text="claim about logins", evidence=[src.id]))
+    from vouch import health
+    health.rebuild_index(store)
+    resp = jsonl_server.handle_request({
+        "id": "1", "method": "kb.search",
+        "params": {"query": "claim about logins"},
+    })
+    assert resp["ok"] is True
+    assert resp["result"]
+    assert resp["result"][0]["backend"] in ("embedding", "fts5", "substring")
+
+
 def test_kb_search_defaults_to_semantic_then_fts5(
     store: KBStore, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
