@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import numpy as np
 import pytest
 
 from vouch import index_db
@@ -24,8 +23,8 @@ def test_embeddings_available_returns_bool() -> None:
 
 
 def test_encode_returns_expected_shape() -> None:
-    if not embeddings_available():
-        pytest.skip("sentence-transformers not installed")
+    import numpy as np
+    pytest.importorskip("sentence_transformers")
     vec = encode(["hello world"])
     assert isinstance(vec, np.ndarray)
     assert vec.shape == (1, 384)
@@ -33,15 +32,13 @@ def test_encode_returns_expected_shape() -> None:
 
 
 def test_encode_multiple_texts() -> None:
-    if not embeddings_available():
-        pytest.skip("sentence-transformers not installed")
+    pytest.importorskip("sentence_transformers")
     vecs = encode(["hello", "world", "foo bar"])
     assert vecs.shape == (3, 384)
 
 
 def test_index_and_search_embedding(store: KBStore) -> None:
-    if not embeddings_available():
-        pytest.skip("sentence-transformers not installed")
+    pytest.importorskip("sentence_transformers")
     store.put_claim(Claim(id="c1", text="login flow uses session cookies"))
     store.put_claim(Claim(id="c2", text="the sky is blue today"))
     store.put_page(Page(id="p1", title="Auth docs", body="how we authenticate users"))
@@ -63,8 +60,7 @@ def test_index_and_search_embedding(store: KBStore) -> None:
 
 
 def test_search_relevant_before_irrelevant(store: KBStore) -> None:
-    if not embeddings_available():
-        pytest.skip("sentence-transformers not installed")
+    pytest.importorskip("sentence_transformers")
     store.put_claim(Claim(id="c1", text="login flow uses session cookies signed by API"))
     store.put_claim(Claim(id="c2", text="the weather is nice today"))
 
@@ -81,6 +77,7 @@ def test_search_relevant_before_irrelevant(store: KBStore) -> None:
 
 
 def test_empty_index_returns_empty(store: KBStore) -> None:
+    pytest.importorskip("numpy")
     query_vec = [0.0] * 384
     hits = index_db.search_embeddings(store.kb_dir, query_vec, limit=5)
     assert hits == []
