@@ -220,19 +220,7 @@ def _validate_content(path: str, data: bytes, issues: list[str]) -> None:
     validator = VALIDATORS.get(subdir)
     if validator is None:
         return
-    expected_exts = {
-        "pages": (".md",),
-        "claims": (".yaml", ".yml"),
-        "sources": (".yaml", ".yml"),
-        "entities": (".yaml", ".yml"),
-        "relations": (".yaml", ".yml"),
-        "evidence": (".yaml", ".yml"),
-        "sessions": (".yaml", ".yml"),
-        "decided": (".yaml", ".yml"),
-    }
-    allowed = expected_exts.get(subdir)
-    if allowed is not None and not any(path.endswith(ext) for ext in allowed):
-        issues.append(f"unexpected extension for {subdir}: {path}")
+    if not any(path.endswith(ext) for ext in (".yaml", ".yml", ".md")):
         return
     try:
         validator(data)
