@@ -306,6 +306,7 @@ class KBStore:
         if not self._claim_path(claim.id).exists():
             raise ArtifactNotFoundError(f"claim {claim.id}")
         self._claim_path(claim.id).write_text(_yaml_dump(claim.model_dump(mode="json")))
+        self._embed_and_store(kind="claim", id=claim.id, text=claim.text)
         return claim
 
     # --- pages -------------------------------------------------------------

@@ -74,3 +74,17 @@ def test_put_evidence_writes_embedding(store: KBStore) -> None:
     store.put_evidence(ev)
     rec = index_db.get_embedding(store.kb_dir, kind="evidence", id="ev1")
     assert rec is not None
+
+
+def test_update_claim_recomputes_embedding(store: KBStore) -> None:
+    src = store.put_source(b"e")
+    c = store.put_claim(Claim(id="c1", text="original", evidence=[src.id]))
+    rec_before = index_db.get_embedding(store.kb_dir, kind="claim", id="c1")
+    assert rec_before is not None
+    hash_before = rec_before[1]
+
+    c2 = c.model_copy(update={"text": "updated"})
+    store.update_claim(c2)
+    rec_after = index_db.get_embedding(store.kb_dir, kind="claim", id="c1")
+    assert rec_after is not None
+    assert rec_after[1] != hash_before
