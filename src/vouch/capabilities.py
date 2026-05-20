@@ -57,10 +57,17 @@ METHODS = [
 
 
 def capabilities() -> Capabilities:
+    retrieval = ["fts5", "substring"]
+    try:
+        from .embeddings import embeddings_available
+        if embeddings_available():
+            retrieval.append("embedding")
+    except Exception:
+        pass
     return Capabilities(
         version=__version__,
         methods=METHODS,
-        retrieval=["fts5", "substring"],
+        retrieval=retrieval,
         review_gated=True,
         transports=["mcp", "jsonl"],
     )

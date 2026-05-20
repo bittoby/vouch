@@ -465,20 +465,34 @@ def crystallize(session_id: str, no_page: bool) -> None:
 @cli.command()
 @click.argument("query")
 @click.option("--limit", default=10, show_default=True, type=int)
-def search(query: str, limit: int) -> None:
+@click.option("--embedding", "use_embedding", is_flag=True,
+              help="Use embedding-based semantic search")
+def search(query: str, limit: int, use_embedding: bool) -> None:
     """Search claims, pages, and entities (embedding → fts5 → substring)."""
     from . import index_db
     store = _load_store()
-    try:
-        hits = index_db.search(store.kb_dir, query, limit=limit)
-        if not hits:
+
+    if use_embedding:
+        from .embeddings import embeddings_available, encode
+        if not embeddings_available():
+            click.echo("Error: sentence-transformers not installed. "
+                       "pip install vouch[embeddings]", err=True)
+            raise SystemExit(1)
+        vec = encode([query])[0].tolist()
+        hits = index_db.search_embeddings(store.kb_dir, vec, limit=limit)
+        backend = "embedding"
+    else:
+        try:
+            hits = index_db.search(store.kb_dir, query, limit=limit)
+            if not hits:
+                hits = store.search_substring(query, limit=limit)
+                backend = "substring"
+            else:
+                backend = "fts5"
+        except Exception:
             hits = store.search_substring(query, limit=limit)
             backend = "substring"
-        else:
-            backend = "fts5"
-    except Exception:
-        hits = store.search_substring(query, limit=limit)
-        backend = "substring"
+
     for kind, hid, snippet, score in hits:
         click.echo(f"[{kind}] {hid}  score={score:.3f}  ({backend})")
         click.echo(f"    {snippet[:200]}")

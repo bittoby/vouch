@@ -25,6 +25,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+embeddings = [
+    "sentence-transformers>=3,<4",
+    "numpy>=1.26,<2",
+]
 dev = [
     "pytest>=9.0.3,<10",
     "pytest-cov>=5,<6",

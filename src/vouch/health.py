@@ -164,7 +164,31 @@ def rebuild_index(store: KBStore) -> dict:
                 conn, id=e.id, name=e.name, description=e.description,
                 type=e.type.value, aliases=e.aliases,
             )
+    _rebuild_embeddings(store)
     return index_db.stats(store.kb_dir)
+
+
+def _rebuild_embeddings(store: KBStore) -> None:
+    from .embeddings import embeddings_available, encode
+    if not embeddings_available():
+        return
+    with index_db.open_db(store.kb_dir) as conn:
+        texts: list[tuple[str, str, str]] = []
+        for c in store.list_claims():
+            texts.append(("claim", c.id, c.text))
+        for p in store.list_pages():
+            texts.append(("page", p.id, f"{p.title} {p.body}"))
+        for e in store.list_entities():
+            texts.append(("entity", e.id, f"{e.name} {e.description or ''}"))
+        if not texts:
+            return
+        batch_size = 64
+        for i in range(0, len(texts), batch_size):
+            batch = texts[i:i + batch_size]
+            vecs = encode([t[2] for t in batch])
+            for (kind, eid, _), row in zip(batch, vecs, strict=True):
+                index_db.index_embedding(conn, kind=kind, id=eid,
+                                         vec=row.tolist())
 
 
 # --- helpers used by `vouch discover` (CLI) -------------------------------
