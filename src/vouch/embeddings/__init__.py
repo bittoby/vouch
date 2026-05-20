@@ -16,6 +16,12 @@ from .base import (
     register,
 )
 
+# Auto-register the default adapter if sentence-transformers is installed.
+try:
+    from . import st_mpnet  # noqa: F401
+except ImportError:
+    pass
+
 __all__ = [
     "DEFAULT_MODEL_NAME",
     "Embedder",
