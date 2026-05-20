@@ -2,6 +2,11 @@
 
 **Git-native, review-gated knowledge base for LLM agents. MCP server + JSONL tool server + CLI.**
 
+<p align="center">
+  <img src="docs/banner.svg" alt="vouch — propose → review → commit → retrieve" width="100%"/>
+</p>
+
+
 > Agents should not start every session with amnesia — but they shouldn't get to write whatever they want either.
 
 `vouch` is a knowledge base for LLM agents with an explicit **review gate**: agents *propose* writes; humans *approve* them with `vouch approve`. Approved artifacts are plain files on disk — YAML for claims, markdown for pages — so the KB lives in your repo, is reviewed in PRs, diffs cleanly, and can be exported as a portable bundle.
