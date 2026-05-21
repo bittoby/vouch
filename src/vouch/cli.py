@@ -466,16 +466,16 @@ def crystallize(session_id: str, no_page: bool) -> None:
 @click.argument("query")
 @click.option("--limit", default=10, show_default=True, type=int)
 def search(query: str, limit: int) -> None:
-    """FTS5 search over claims, pages, and entities."""
+    """Search claims, pages, and entities (embedding → fts5 → substring)."""
     from . import index_db
     store = _load_store()
     try:
         hits = index_db.search(store.kb_dir, query, limit=limit)
-        if not hits:
+        if hits:
+            backend = "fts5"
+        else:
             hits = store.search_substring(query, limit=limit)
             backend = "substring"
-        else:
-            backend = "fts5"
     except Exception:
         hits = store.search_substring(query, limit=limit)
         backend = "substring"
