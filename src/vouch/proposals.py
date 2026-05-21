@@ -222,6 +222,8 @@ def approve(
         raise ProposalError(
             f"proposal {proposal_id} is {proposal.status.value}, not pending"
         )
+    if approved_by == proposal.proposed_by:
+        raise ProposalError("forbidden_self_approval")
     payload = dict(proposal.payload)
     # Refuse to overwrite an existing artifact. Without this guard a retry
     # after a crash between put_<kind>() and move_proposal_to_decided() would

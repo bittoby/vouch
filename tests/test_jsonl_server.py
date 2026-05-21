@@ -57,6 +57,7 @@ def test_jsonl_full_flow(store: KBStore, monkeypatch) -> None:
     pr = handle_request({"id": "1", "method": "kb.propose_claim",
                          "params": {"text": "JWT used", "evidence": [src.id]}})
     pid = pr["result"]["proposal_id"]
+    monkeypatch.setenv("VOUCH_AGENT", "human-reviewer")
     handle_request({"id": "2", "method": "kb.approve",
                     "params": {"proposal_id": pid}})
     status = handle_request({"id": "3", "method": "kb.status", "params": {}})
@@ -147,6 +148,7 @@ def test_jsonl_session_lifecycle(store: KBStore, monkeypatch) -> None:
                                "session_id": sid}})
     handle_request({"id": "3", "method": "kb.session_end",
                     "params": {"session_id": sid}})
+    monkeypatch.setenv("VOUCH_AGENT", "human-reviewer")
     cryst = handle_request({"id": "4", "method": "kb.crystallize",
                             "params": {"session_id": sid}})
     assert len(cryst["result"]["approved"]) == 1
