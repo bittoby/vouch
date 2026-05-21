@@ -21,6 +21,13 @@ def _coalesce_snippet(h: Hit, other: Hits) -> str:
 
 def rrf_fuse(a: Hits, b: Hits, *, limit: int = 10, k: int = 60) -> Hits:
     """Reciprocal Rank Fusion: score = sum(1 / (k + rank)) across lists."""
+    if limit < 0:
+        raise ValueError("limit must be >= 0")
+    if k < 0:
+        # rank starts at 1, so k must be > -1, but disallow negative
+        # entirely to match the canonical RRF definition (Cormack et al.)
+        # and to avoid division by zero when k == -rank.
+        raise ValueError("k must be >= 0")
     scores: dict[tuple[str, str], float] = {}
     for lst in (a, b):
         for rank, h in enumerate(lst, start=1):
@@ -54,6 +61,8 @@ def weighted_fuse(
     limit: int = 10,
 ) -> Hits:
     """Min-max normalize each list, then score = w_a * a_score + w_b * b_score."""
+    if limit < 0:
+        raise ValueError("limit must be >= 0")
     a_norm = _minmax([h[3] for h in a])
     b_norm = _minmax([h[3] for h in b])
     a_score = {_key(h): a_norm[i] for i, h in enumerate(a)}

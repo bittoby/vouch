@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from vouch.embeddings.fusion import (
     normalized_fuse,
     rrf_fuse,
@@ -39,3 +41,19 @@ def test_normalized_fuse_zero_score_inputs() -> None:
     b = _hits([("claim", "y", 0.0)])
     fused = normalized_fuse(a, b, limit=2)
     assert len(fused) == 2
+
+
+def test_rrf_fuse_rejects_negative_limit() -> None:
+    with pytest.raises(ValueError, match="limit must be >= 0"):
+        rrf_fuse([], [], limit=-1)
+
+
+def test_rrf_fuse_rejects_negative_k() -> None:
+    # k=-1 would make 1/(k+rank) explode (rank=1 -> divide by zero).
+    with pytest.raises(ValueError, match="k must be >= 0"):
+        rrf_fuse([], [], limit=5, k=-1)
+
+
+def test_weighted_fuse_rejects_negative_limit() -> None:
+    with pytest.raises(ValueError, match="limit must be >= 0"):
+        weighted_fuse([], [], limit=-1)
