@@ -93,3 +93,44 @@ def test_update_claim_recomputes_embedding(store: KBStore) -> None:
     rec_after = index_db.get_embedding(store.kb_dir, kind="claim", id="c1")
     assert rec_after is not None
     assert rec_after[1] != hash_before
+
+
+def test_jsonl_search_uses_embedding_backend(
+    store: KBStore, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from vouch import jsonl_server
+    monkeypatch.setattr(jsonl_server, "_store", lambda: store)
+    src = store.put_source(b"e")
+    store.put_claim(Claim(id="c1", text="claim about logins", evidence=[src.id]))
+    from vouch import health
+    health.rebuild_index(store)
+    resp = jsonl_server.handle_request({
+        "id": "1", "method": "kb.search",
+        "params": {"query": "claim about logins"},
+    })
+    assert resp["ok"] is True
+    assert resp["result"]
+    assert resp["result"][0]["backend"] in ("embedding", "fts5", "substring")
+
+
+def test_kb_search_defaults_to_semantic_then_fts5(
+    store: KBStore, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from vouch import server
+    monkeypatch.setattr(server, "_store", lambda: store)
+    src = store.put_source(b"e")
+    store.put_claim(Claim(id="c1", text="authentication design", evidence=[src.id]))
+    from vouch import health
+    health.rebuild_index(store)
+    result = server.kb_search("authentication design", limit=5)
+    assert result["hits"]
+    assert result["backend"] in ("embedding", "fts5", "substring")
+    assert result["hits"][0]["id"] == "c1"
+
+
+def test_search_semantic_returns_top_hits(store: KBStore) -> None:
+    src = store.put_source(b"e")
+    store.put_claim(Claim(id="c1", text="alpha alpha alpha", evidence=[src.id]))
+    store.put_claim(Claim(id="c2", text="beta beta beta", evidence=[src.id]))
+    hits = index_db.search_semantic(store.kb_dir, query="alpha alpha alpha", limit=2)
+    assert hits[0][1] == "c1"
