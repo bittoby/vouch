@@ -21,6 +21,22 @@ Three opinionated choices distinguish vouch from the neighbours:
 2. **Writes require approval.** Agents file *proposals*; a human (or trusted approving agent) explicitly accepts them. `proposed/` is gitignored, so rejected drafts never pollute history.
 3. **Claims must cite sources.** A claim without at least one Source / Evidence id is a validation error, not a warning. Sources are content-hashed; the same evidence registered twice de-duplicates.
 
+## When to use vouch
+
+Worth it when:
+
+- **Multiple agents share a repo** (Claude Code + Cursor + a CI bot). Per-agent attribution in the audit log makes "which agent claimed what" answerable.
+- **Sessions keep re-explaining the same context.** Curated, cited claims let new sessions start from your team's agreed answer instead of re-grepping.
+- **You want decision records without the ADR ceremony.** `vouch crystallize` promotes a session's durable parts into proposals; one approve and they're permanent.
+- **You'd review agent-stated facts the way you review agent-written code.** Vouch is a PR queue for claimed knowledge.
+- **Compliance / audit trails matter.** Required citations + append-only audit log give you "who decided X, citing what, when" for free.
+
+Skip it if:
+
+- Solo hobby project where context fits in your head.
+- Short-lived branches with no compounding context.
+- Your team won't actually review proposals — without the gate, vouch is a worse note app.
+
 ## Install
 
 ```bash
