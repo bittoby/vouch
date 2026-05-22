@@ -39,11 +39,17 @@ def rerank(
 ) -> list[Hit]:
     if not hits:
         return []
+    if top_k < 0:
+        raise ValueError(f"top_k must be >= 0, got {top_k}")
     candidates = [h[2] or h[1] for h in hits]
     scores = reranker.score(query, candidates)
+    if len(scores) != len(candidates):
+        raise ValueError(
+            f"reranker returned {len(scores)} scores for {len(candidates)} candidates"
+        )
     reranked = [
         (kind, id_, snip, score)
-        for (kind, id_, snip, _orig), score in zip(hits, scores, strict=False)
+        for (kind, id_, snip, _orig), score in zip(hits, scores, strict=True)
     ]
     reranked.sort(key=lambda h: h[3], reverse=True)
     return reranked[:top_k]
