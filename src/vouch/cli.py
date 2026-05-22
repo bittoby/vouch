@@ -11,9 +11,10 @@ import getpass
 import json
 import os
 import sys
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
 
 import click
 import yaml
@@ -88,6 +89,62 @@ def _emit_json(obj) -> None:
     click.echo(json.dumps(obj, indent=2, default=str, sort_keys=True))
 
 
+@contextmanager
+def _progress(label: str, *, enabled: bool = True) -> Iterator[Callable[[], None]]:
+    if not enabled:
+        yield lambda: None
+        return
+    with click.progressbar(length=1, label=label, file=sys.stderr) as bar:
+        yield lambda: bar.update(1)
+
+
+def _finding_dict(f: health.Finding) -> dict[str, Any]:
+    return {
+        "severity": f.severity,
+        "code": f.code,
+        "message": f.message,
+        "object_ids": f.object_ids,
+    }
+
+
+def _health_dict(report: health.HealthReport) -> dict[str, Any]:
+    return {
+        "ok": report.ok,
+        "findings": [_finding_dict(f) for f in report.findings],
+        "counts": report.counts,
+    }
+
+
+def _echo_finding(f: health.Finding) -> None:
+    marker, fg = {
+        "error": ("x", "red"),
+        "warning": ("!", "yellow"),
+        "info": (".", "blue"),
+    }.get(f.severity, ("?", "white"))
+    click.echo(
+        f"{click.style(marker, fg=fg, bold=f.severity == 'error')} "
+        f"{click.style(f.severity.upper(), fg=fg)} "
+        f"{click.style(f.code, bold=True)}  {f.message}"
+    )
+    if f.object_ids:
+        click.echo(f"    objects: {', '.join(f.object_ids)}")
+
+
+def _echo_health_report(report: health.HealthReport) -> None:
+    if not report.findings:
+        click.secho("clean", fg="green")
+    else:
+        for finding in report.findings:
+            _echo_finding(finding)
+    if report.counts:
+        click.echo(
+            "summary: "
+            f"{report.counts['claims']} claims, "
+            f"{report.counts['sources']} sources, "
+            f"{report.counts['pending_proposals']} pending proposals"
+        )
+
+
 @click.group()
 @click.version_option(__version__, prog_name="vouch")
 def cli() -> None:
@@ -148,40 +205,53 @@ def status(as_json: bool) -> None:
     if as_json:
         _emit_json(s)
         return
-    click.echo(f"KB at {s['kb_dir']}")
+    click.secho("KB status", fg="cyan", bold=True)
+    click.echo(f"  path:    {s['kb_dir']}")
     click.echo(
         f"  durable: {s['claims']} claims  •  {s['pages']} pages  •  "
         f"{s['sources']} sources  •  {s['entities']} entities  •  "
         f"{s['relations']} relations"
     )
-    click.echo(f"  pending: {s['pending_proposals']} proposals")
-    click.echo(f"  audit:   {s['audit_events']} events  •  "
-               f"index: {'present' if s['index_present'] else 'missing'}")
+    pending_style = "yellow" if s["pending_proposals"] else "green"
+    index_label = "present" if s["index_present"] else "missing"
+    index_style = "green" if s["index_present"] else "yellow"
+    click.echo(
+        "  pending: "
+        f"{click.style(str(s['pending_proposals']), fg=pending_style, bold=True)} "
+        "proposals"
+    )
+    click.echo(
+        f"  audit:   {s['audit_events']} events  •  "
+        f"index: {click.style(index_label, fg=index_style, bold=True)}"
+    )
 
 
 @cli.command()
 @click.option("--stale-days", default=180, show_default=True, type=int)
-def lint(stale_days: int) -> None:
+@click.option("--json", "as_json", is_flag=True, help="Emit JSON instead of text.")
+def lint(stale_days: int, as_json: bool) -> None:
     """Surface user-actionable problems: broken citations, stale claims, dangling refs."""
     store = _load_store()
     report = health.lint(store, stale_after_days=stale_days)
-    for f in report.findings:
-        marker = {"error": "✗", "warning": "!", "info": "·"}.get(f.severity, "?")
-        click.echo(f"{marker} [{f.code}] {f.message}")
-    if not report.findings:
-        click.echo("clean")
+    if as_json:
+        _emit_json(_health_dict(report))
+    else:
+        _echo_health_report(report)
     sys.exit(0 if report.ok else 1)
 
 
 @cli.command()
-def doctor() -> None:
+@click.option("--json", "as_json", is_flag=True, help="Emit JSON instead of text.")
+def doctor(as_json: bool) -> None:
     """Full health sweep: lint + source verification + index check."""
     store = _load_store()
-    report = health.doctor(store)
-    for f in report.findings:
-        marker = {"error": "✗", "warning": "!", "info": "·"}.get(f.severity, "?")
-        click.echo(f"{marker} [{f.code}] {f.message}")
-    click.echo(f"-- {report.counts}")
+    with _progress("Running doctor", enabled=not as_json) as done:
+        report = health.doctor(store)
+        done()
+    if as_json:
+        _emit_json(_health_dict(report))
+    else:
+        _echo_health_report(report)
     sys.exit(0 if report.ok else 1)
 
 
@@ -475,7 +545,8 @@ def crystallize(session_id: str, no_page: bool) -> None:
 @cli.command()
 @click.argument("query")
 @click.option("--limit", default=10, show_default=True, type=int)
-def search(query: str, limit: int) -> None:
+@click.option("--json", "as_json", is_flag=True, help="Emit JSON instead of text.")
+def search(query: str, limit: int, as_json: bool) -> None:
     """Search claims, pages, and entities (embedding → fts5 → substring)."""
     from . import index_db
     store = _load_store()
@@ -489,8 +560,28 @@ def search(query: str, limit: int) -> None:
     except Exception:
         hits = store.search_substring(query, limit=limit)
         backend = "substring"
+    if as_json:
+        _emit_json([
+            {
+                "kind": kind,
+                "id": hid,
+                "snippet": snippet,
+                "score": score,
+                "backend": backend,
+            }
+            for kind, hid, snippet, score in hits
+        ])
+        return
+    if not hits:
+        click.secho("no results", fg="yellow")
+        return
     for kind, hid, snippet, score in hits:
-        click.echo(f"[{kind}] {hid}  score={score:.3f}  ({backend})")
+        click.echo(
+            f"{click.style(f'[{kind}]', fg='cyan', bold=True)} "
+            f"{click.style(hid, bold=True)}  "
+            f"score={score:.3f}  "
+            f"({click.style(backend, fg='green' if backend == 'fts5' else 'yellow')})"
+        )
         click.echo(f"    {snippet[:200]}")
 
 
@@ -512,11 +603,21 @@ def context(task: str, limit: int, max_chars: int | None,
 
 
 @cli.command()
-def index() -> None:
+@click.option("--json", "as_json", is_flag=True, help="Emit JSON instead of text.")
+def index(as_json: bool) -> None:
     """Rebuild state.db from durable files."""
     store = _load_store()
-    stats = health.rebuild_index(store)
-    click.echo(f"indexed: {stats}")
+    with _progress("Rebuilding index", enabled=not as_json) as done:
+        stats = health.rebuild_index(store)
+        done()
+    if as_json:
+        _emit_json(stats)
+        return
+    click.secho("index rebuilt", fg="green")
+    click.echo(
+        f"  claims: {stats['claims']}  pages: {stats['pages']}  "
+        f"entities: {stats['entities']}"
+    )
 
 
 @cli.command()
@@ -541,59 +642,104 @@ def audit(tail: int, as_json: bool) -> None:
 
 @cli.command()
 @click.option("--out", "out_path", required=True, type=click.Path(dir_okay=False))
-def export(out_path: str) -> None:
+@click.option("--json", "as_json", is_flag=True, help="Emit JSON instead of text.")
+def export(out_path: str, as_json: bool) -> None:
     """Bundle the durable KB into a portable .tar.gz."""
     store = _load_store()
-    manifest = bundle.export(store.kb_dir, dest=Path(out_path), actor=_whoami())
-    _emit_json({
+    with _progress("Exporting bundle", enabled=not as_json) as done:
+        manifest = bundle.export(store.kb_dir, dest=Path(out_path), actor=_whoami())
+        done()
+    summary = {
         "bundle_id": manifest["bundle_id"],
         "files": len(manifest["files"]),
         "out": out_path,
-    })
+    }
+    if as_json:
+        _emit_json(summary)
+        return
+    click.secho("bundle exported", fg="green")
+    click.echo(f"  id:    {summary['bundle_id']}")
+    click.echo(f"  files: {summary['files']}")
+    click.echo(f"  out:   {summary['out']}")
 
 
 @cli.command("export-check")
 @click.argument("bundle_path", type=click.Path(exists=True, dir_okay=False))
-def export_check_cmd(bundle_path: str) -> None:
+@click.option("--json", "as_json", is_flag=True, help="Emit JSON instead of text.")
+def export_check_cmd(bundle_path: str, as_json: bool) -> None:
     """Verify every file in a bundle matches its manifest hash."""
     r = bundle.export_check(Path(bundle_path))
-    _emit_json({
+    summary = {
         "ok": r.ok, "bundle_id": r.bundle_id,
         "files_checked": r.files_checked, "issues": r.issues,
-    })
+    }
+    if as_json:
+        _emit_json(summary)
+    else:
+        click.secho("bundle check passed" if r.ok else "bundle check failed",
+                    fg="green" if r.ok else "red", bold=not r.ok)
+        click.echo(f"  id:            {r.bundle_id}")
+        click.echo(f"  files checked: {r.files_checked}")
+        for issue in r.issues:
+            click.echo(f"  {click.style('!', fg='yellow')} {issue}")
     sys.exit(0 if r.ok else 1)
 
 
 @cli.command("import-check")
 @click.argument("bundle_path", type=click.Path(exists=True, dir_okay=False))
-def import_check_cmd(bundle_path: str) -> None:
+@click.option("--json", "as_json", is_flag=True, help="Emit JSON instead of text.")
+def import_check_cmd(bundle_path: str, as_json: bool) -> None:
     """Diff a bundle against the destination KB without writing."""
     store = _load_store()
     r = bundle.import_check(store.kb_dir, Path(bundle_path))
-    _emit_json({
+    summary = {
         "ok": r.ok, "bundle_id": r.bundle_id,
         "new_files": r.new_files, "conflicts": r.conflicts,
         "identical_files": len(r.identical), "issues": r.issues,
-    })
+    }
+    if as_json:
+        _emit_json(summary)
+    else:
+        click.secho("import check passed" if r.ok else "import check failed",
+                    fg="green" if r.ok else "red", bold=not r.ok)
+        click.echo(f"  id:        {r.bundle_id}")
+        click.echo(f"  new:       {len(r.new_files)} files")
+        click.echo(f"  conflicts: {len(r.conflicts)} files")
+        click.echo(f"  identical: {len(r.identical)} files")
+        for issue in r.issues:
+            click.echo(f"  {click.style('!', fg='yellow')} {issue}")
+    sys.exit(0 if r.ok else 1)
 
 
 @cli.command("import-apply")
 @click.argument("bundle_path", type=click.Path(exists=True, dir_okay=False))
 @click.option("--on-conflict", default="skip", show_default=True,
               type=click.Choice(["skip", "overwrite", "fail"]))
-def import_apply_cmd(bundle_path: str, on_conflict: str) -> None:
+@click.option("--json", "as_json", is_flag=True, help="Emit JSON instead of text.")
+def import_apply_cmd(bundle_path: str, on_conflict: str, as_json: bool) -> None:
     """Apply a bundle. Default policy is skip — never destructive without explicit overwrite."""
     store = _load_store()
     try:
-        r = bundle.import_apply(
-            store.kb_dir, Path(bundle_path),
-            on_conflict=on_conflict, actor=_whoami(),
-        )
+        with _progress("Importing bundle", enabled=not as_json) as done:
+            r = bundle.import_apply(
+                store.kb_dir, Path(bundle_path),
+                on_conflict=on_conflict, actor=_whoami(),
+            )
+            done()
     except RuntimeError as e:
         raise click.ClickException(str(e)) from e
     # Rebuild the index after a bulk import so search picks up new claims.
-    health.rebuild_index(store)
-    _emit_json(r)
+    with _progress("Rebuilding index", enabled=not as_json) as done:
+        health.rebuild_index(store)
+        done()
+    if as_json:
+        _emit_json(r)
+        return
+    click.secho("bundle imported", fg="green")
+    click.echo(f"  id:       {r['bundle_id']}")
+    click.echo(f"  written:  {len(r['written'])} files")
+    click.echo(f"  skipped:  {len(r['skipped_conflicts'])} conflicts")
+    click.echo(f"  existing: {len(r['identical'])} identical files")
 
 
 # --- serve ----------------------------------------------------------------

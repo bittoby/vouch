@@ -10,12 +10,14 @@ which slipped past the except and surfaced as a traceback.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
 from click.testing import CliRunner
 
 from vouch.cli import cli
+from vouch.models import Claim
 from vouch.proposals import propose_claim
 from vouch.storage import KBStore
 
@@ -119,3 +121,61 @@ def test_search_substring_backend_label(
     result = runner.invoke(cli, ["search", "findable"])
     assert result.exit_code == 0, result.output
     assert "(substring)" in result.output
+
+
+def test_status_uses_color_in_human_output(store: KBStore) -> None:
+    result = CliRunner().invoke(cli, ["status"], color=True)
+
+    assert result.exit_code == 0, result.output
+    assert "KB status" in result.output
+    assert "\x1b[" in result.output
+
+
+def test_lint_json_is_machine_readable(store: KBStore) -> None:
+    result = CliRunner().invoke(cli, ["lint", "--json"])
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["ok"] is True
+    assert payload["findings"] == []
+
+
+def test_search_json_includes_backend(store: KBStore) -> None:
+    from vouch import index_db
+
+    src = store.put_source(b"e")
+    store.put_claim(
+        Claim(id="c-findable", text="findable token", evidence=[src.id])
+    )
+    with index_db.open_db(store.kb_dir) as conn:
+        index_db.index_claim(
+            conn, id="c-findable", text="findable token",
+            type="observation", status="working", tags=[],
+        )
+
+    result = CliRunner().invoke(cli, ["search", "findable", "--json"])
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload[0]["id"] == "c-findable"
+    assert payload[0]["backend"] == "fts5"
+
+
+def test_export_defaults_to_human_output_and_supports_json(
+    store: KBStore, tmp_path: Path
+) -> None:
+    out = tmp_path / "kb.tar.gz"
+
+    human = CliRunner().invoke(cli, ["export", "--out", str(out)])
+
+    assert human.exit_code == 0, human.output
+    assert "bundle exported" in human.output
+    assert out.exists()
+
+    machine = CliRunner().invoke(
+        cli, ["export", "--out", str(tmp_path / "kb2.tar.gz"), "--json"]
+    )
+
+    assert machine.exit_code == 0, machine.output
+    payload = json.loads(machine.output)
+    assert payload["files"] >= 1

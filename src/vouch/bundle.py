@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from yaml.error import MarkedYAMLError
 
 from . import audit
 from .models import Claim, Entity, Evidence, Proposal, Relation, Session, Source
@@ -225,7 +226,17 @@ def _validate_content(path: str, data: bytes, issues: list[str]) -> None:
     try:
         validator(data)
     except Exception as e:
-        issues.append(f"schema validation failed: {path}: {e}")
+        issues.append(_validation_issue(path, e))
+
+
+def _validation_issue(path: str, error: Exception) -> str:
+    if isinstance(error, MarkedYAMLError) and error.problem_mark is not None:
+        mark = error.problem_mark
+        return (
+            "schema validation failed: "
+            f"{path}:{mark.line + 1}:{mark.column + 1}: {error.problem}"
+        )
+    return f"schema validation failed: {path}: {error}"
 
 
 def import_check(kb_dir: Path, bundle_path: Path) -> ImportCheckResult:
