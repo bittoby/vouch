@@ -6,6 +6,10 @@ All notable changes to vouch are documented here. Format follows
 
 ## [Unreleased]
 
+### Added
+- Seed a cited starter source and claim during `vouch init`, print first-run
+  next steps, and document a 30-second onboarding tour (#54).
+
 ### Fixed
 - Fix `vouch search` CLI: assign backend label per code path so substring fallback results are no longer mislabelled as `fts5`; update stale docstring to reflect multi-backend search surface (#52).
 
