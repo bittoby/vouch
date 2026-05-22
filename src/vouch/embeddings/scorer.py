@@ -51,10 +51,16 @@ def evaluate(
 ) -> dict[str, float]:
     """Run a metric sweep over a JSONL queries file."""
     from .. import index_db
+    known = {"recall@k", "mrr", "ndcg"}
+    unknown = set(metrics) - known
+    if unknown:
+        raise ValueError(f"unknown metric(s): {sorted(unknown)}; known: {sorted(known)}")
     totals = {m: 0.0 for m in metrics}
     n = 0
     with queries_file.open() as f:
         for line in f:
+            if not line.strip():
+                continue
             row = json.loads(line)
             q = row["query"]
             rel = set(row["relevant"])
