@@ -11,13 +11,24 @@ which slipped past the except and surfaced as a traceback.
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import patch
 
+import numpy as np
 import pytest
 from click.testing import CliRunner
 
+from vouch import sessions as sess_mod
 from vouch.cli import cli
 from vouch.proposals import propose_claim
 from vouch.storage import KBStore
+
+
+class _MockEmbedder:
+    dim = 768
+    def encode(self, text: str) -> np.ndarray:
+        return np.zeros(self.dim, dtype=np.float32)
+    def encode_batch(self, texts: list[str]) -> np.ndarray:
+        return np.zeros((len(texts), self.dim), dtype=np.float32) if texts else np.zeros((0, self.dim), dtype=np.float32)
 
 
 @pytest.fixture
@@ -119,3 +130,55 @@ def test_search_substring_backend_label(
     result = runner.invoke(cli, ["search", "findable"])
     assert result.exit_code == 0, result.output
     assert "(substring)" in result.output
+
+
+def test_crystallize_cli_all_failures_exits_1(store: KBStore) -> None:
+    embedder_patch = patch("vouch.embeddings.get_embedder", return_value=_MockEmbedder())
+    embedder_patch.start()
+    try:
+        src = store.put_source(b"e")
+    finally:
+        embedder_patch.stop()
+    sess = sess_mod.session_start(store, agent="a", task="t")
+    propose_claim(store, text="t1", evidence=[src.id], proposed_by="a", session_id=sess.id)
+    propose_claim(store, text="t2", evidence=[src.id], proposed_by="a", session_id=sess.id)
+    sess_mod.session_end(store, sess.id)
+
+    with patch("vouch.sessions.approve", side_effect=ValueError("storage full")):
+        result = CliRunner().invoke(cli, ["crystallize", sess.id])
+
+    assert result.exit_code == 1
+    assert "error:" in result.stderr
+    assert "all 2 proposal(s) failed" in result.stderr
+
+
+def test_crystallize_cli_partial_failures_shows_warning(store: KBStore) -> None:
+    from vouch.proposals import approve as real_approve
+
+    embedder_patch = patch("vouch.embeddings.get_embedder", return_value=_MockEmbedder())
+    embedder_patch.start()
+    try:
+        src = store.put_source(b"e")
+    finally:
+        embedder_patch.stop()
+    sess = sess_mod.session_start(store, agent="a", task="t")
+    propose_claim(store, text="t1", evidence=[src.id], proposed_by="a", session_id=sess.id)
+    propose_claim(store, text="t2", evidence=[src.id], proposed_by="a", session_id=sess.id)
+    sess_mod.session_end(store, sess.id)
+
+    call_count = 0
+
+    def _side_effect(store, proposal_id, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise ValueError("storage full")
+        return real_approve(store, proposal_id, **kwargs)
+
+    with patch("vouch.sessions.approve", side_effect=_side_effect), \
+         patch("vouch.embeddings.get_embedder", return_value=_MockEmbedder()):
+        result = CliRunner().invoke(cli, ["crystallize", sess.id])
+
+    assert result.exit_code == 0
+    assert "warning:" in result.stderr
+    assert "1/2 proposal(s) failed" in result.stderr
